@@ -22,6 +22,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN
 import android.view.Display
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import java.lang.Math.abs
 
@@ -38,6 +39,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val liveCaptionPackageName = "com.google.android.as"
     private val liveCaptionViewLocation = Rect()
     private val whitespaceRegex = Regex("\\s+")
+    private val tryRefresh = "Live Scroll Transcript found matching text but failed to scroll. Try reloading the page."
 
     @RequiresApi(Build.VERSION_CODES.R)
     private val ocrProcessor = OcrProcessor(liveCaptionViewLocation, ::scrollToText)
@@ -132,7 +134,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
 
         if (nodesContainingKeyword.size == 1) {
             val scrollSuccess = nodesContainingKeyword.first().performAction(ACTION_SHOW_ON_SCREEN.id)
-            // TODO: Display error message (toast?) if scroll fails? (Suggest reloading the page)
+            if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
             Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
         }
         processingScroll = false
