@@ -28,23 +28,30 @@ import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
+/**
+ * This class uses OCR to read text from an [AccessibilityService] screenshot then invokes callback.
+ *
+ * @param[textLocation] Rect identifies where to search for text in the screenshot.
+ * @param[callback] (String) -> Unit the function to which we pass the found text.
+ */
 @RequiresApi(Build.VERSION_CODES.R)
-class OcrProcessor(callback: (String) -> Unit, captionViewLocation: Rect) :
+class OcrProcessor(textLocation: Rect, callback: (String) -> Unit) :
     TakeScreenshotCallback {
     private val tag = "livescrolltranscript.ScreenshotCallback"
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val textLocation = textLocation
     private val callback = callback
-    private val captionViewLocation = captionViewLocation
 
     override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
-        getCaptionText(screenshot)
+        getTextAndInvokeCallback(screenshot)
     }
 
     override fun onFailure(errorCode: Int) {
-        Log.w(tag, "Screenshot failed with errorCode: %s".format(errorCode))
+        Log.e(tag, "Screenshot failed with errorCode: %s".format(errorCode))
     }
 
-    private fun getCaptionText(screenshot: AccessibilityService.ScreenshotResult): Task<Text> {
+    private fun getTextAndInvokeCallback(screenshot: AccessibilityService.ScreenshotResult):
+            Task<Text> {
         val hwBuffer = screenshot.hardwareBuffer
         val bitmap = Bitmap.wrapHardwareBuffer(hwBuffer, screenshot.colorSpace)
             ?.copy(Bitmap.Config.ARGB_8888, false)
@@ -52,10 +59,10 @@ class OcrProcessor(callback: (String) -> Unit, captionViewLocation: Rect) :
         val croppedBitmap = bitmap?.let {
             Bitmap.createBitmap(
                 it,
-                captionViewLocation.left,
-                captionViewLocation.top,
-                captionViewLocation.width(),
-                captionViewLocation.height())
+                textLocation.left,
+                textLocation.top,
+                textLocation.width(),
+                textLocation.height())
         }
         return recognizer.process(InputImage.fromBitmap(croppedBitmap, 0))
             .addOnSuccessListener { visionText ->
@@ -66,6 +73,4 @@ class OcrProcessor(callback: (String) -> Unit, captionViewLocation: Rect) :
                 e.printStackTrace()
             }
     }
-
-
 }

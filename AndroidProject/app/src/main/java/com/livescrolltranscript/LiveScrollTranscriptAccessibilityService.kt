@@ -25,6 +25,14 @@ import android.view.Display
 import androidx.annotation.RequiresApi
 import java.lang.Math.abs
 
+/**
+ * An [AccessibilityService] for scrolling on-screen text to match recently-played audio.
+ *
+ * When the Live Captions view scrolls, this service receives an [AccessibilityEvent]. It then takes
+ * a screenshot and uses OCR to read the current Live Caption text. The current accessibility tree
+ * is searched for the current caption text. If a unique [AccessibilityNodeInfo] is found to match
+ * the caption text, it is requested to show itself on screen.
+ */
 class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val tag = "LiveScrollTranscriptAccessibilityService"
     private val liveCaptionPackageName = "com.google.android.as"
@@ -32,51 +40,65 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val whitespaceRegex = Regex("\\s+")
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private val ocrProcessor = OcrProcessor(::scrollToCurrentText, liveCaptionViewLocation)
+    private val ocrProcessor = OcrProcessor(liveCaptionViewLocation, ::scrollToText)
 
-    private val captionBoxScrollsThreshold: Int = 2
-    private var numCaptionBoxScrolls: Int = captionBoxScrollsThreshold
+    // Number of Live Caption view scrolls that should happen before we search for new caption text.
+    private val captionViewScrollsThreshold: Int = 2
+
+    // Number of Live Caption view scrolls that have happened since last search for caption text.
+    private var numCaptionViewScrolls: Int = captionViewScrollsThreshold
+
     private var processingScroll = false    // TODO: Better locking (ensure it gets released on failure)
 
     override fun onInterrupt() {}
 
+    /**
+     * Responds to view scroll events from Live Caption by searching for and showing matching text.
+     */
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.source?.packageName?.equals(liveCaptionPackageName) == true &&
-            ++numCaptionBoxScrolls >= captionBoxScrollsThreshold &&
+            ++numCaptionViewScrolls >= captionViewScrollsThreshold &&
             !processingScroll
         ) {
             processingScroll = true
             Log.d(tag, "processingScroll = %s".format(processingScroll))
-            numCaptionBoxScrolls = 0
+            numCaptionViewScrolls = 0
 
             event?.source?.getBoundsInScreen(liveCaptionViewLocation)   // TODO: Lock Rect during OCR.
             takeScreenshot(Display.DEFAULT_DISPLAY, applicationContext.mainExecutor, ocrProcessor)
         }
     }
 
-    private fun scrollToCurrentText(onScreenCaptionText: String) {
-        val captionWords = onScreenCaptionText.split(whitespaceRegex)
-        val keywordIndex = getKeywordIndex(captionWords)
+    /**
+     * Attempts to scroll the current screen to display [textToFind].
+     *
+     * If a unique [AccessibilityNodeInfo] is found to match [textToFind], the node is displayed.
+     */
+    private fun scrollToText(textToFind: String) {
+        val wordsToFind = textToFind.split(whitespaceRegex)
+        val keywordIndex = getLongestWordIndex(wordsToFind)
         val nodesContainingKeyword = mutableSetOf<AccessibilityNodeInfo>()
 
-        fun getNodesContainingCurrentCaption(node: AccessibilityNodeInfo) {
-            if (nodeContainsWord(node, captionWords[keywordIndex])) {
+        /** Recursive local function to find nodes that contain keyword. */
+        fun getNodesContainingKeyword(node: AccessibilityNodeInfo) {
+            if (nodeContainsWord(node, wordsToFind[keywordIndex])) {
                 nodesContainingKeyword.add(node)
             }
-            // TODO: Recycle NodeInfo when they're not needed (in else or when removing from set? https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo#getChild(int)
             for (i in 1..node.childCount) {
-                node.getChild(i - 1)?.let { getNodesContainingCurrentCaption(it) }
+                node.getChild(i - 1)?.let { getNodesContainingKeyword(it) }
             }
+            // TODO: Recycle nodes when not needed (here, in else, or when removing from set?)
+            // https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo#getChild(int)
         }
 
-        // TODO: Unit test
-        fun narrowDownNodesContainingKeyword() {
+        /** Local functions to narrow down matches by searching for words before/after keyword. */
+        fun narrowDownNodesContainingKeyword() {    // TODO: Unit test
             var offset = 1
             var currIndex: Int
             fun offsetStillInBounds(): Boolean {
                 return keywordIndex - abs(offset) > -1 ||
-                        keywordIndex + abs(offset) < captionWords.size
+                        keywordIndex + abs(offset) < wordsToFind.size
             }
             fun alternateAndMaybeIncrementOffset() {
                 offset *= -1
@@ -88,8 +110,8 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
                 Log.d(tag, "offset: %s nodesContaininKeyword.size: %s".format(
                     offset, nodesContainingKeyword.size))
                 currIndex = keywordIndex + offset
-                if (currIndex > -1 && currIndex < captionWords.size) {
-                    nodesContainingKeyword.removeIf { !nodeContainsWord(it, captionWords[currIndex]) }
+                if (currIndex > -1 && currIndex < wordsToFind.size) {
+                    nodesContainingKeyword.removeIf { !nodeContainsWord(it, wordsToFind[currIndex]) }
                 }
                 alternateAndMaybeIncrementOffset()
 
@@ -98,24 +120,26 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
             }
         }
 
-        Log.d(tag, captionWords.toString())
-        Log.d(tag, captionWords[keywordIndex])
+        Log.d(tag, wordsToFind.toString())
+        Log.d(tag, wordsToFind[keywordIndex])
 
-        getNodesContainingCurrentCaption(this.rootInActiveWindow)
+        getNodesContainingKeyword(this.rootInActiveWindow)
 
         Log.d(tag, nodesContainingKeyword.size.toString())
         Log.d(tag, nodesContainingKeyword.toString())
+
         narrowDownNodesContainingKeyword()
 
         if (nodesContainingKeyword.size == 1) {
             val scrollSuccess = nodesContainingKeyword.first().performAction(ACTION_SHOW_ON_SCREEN.id)
+            // TODO: Display error message (toast?) if scroll fails? (Suggest reloading the page)
             Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
         }
         processingScroll = false
         Log.d(tag, "processingScroll = %s".format(processingScroll))
     }
 
-    private fun getKeywordIndex(words: List<String>): Int {
+    private fun getLongestWordIndex(words: List<String>): Int {
         return words.indexOf(words.maxBy(String::length))
     }
 
