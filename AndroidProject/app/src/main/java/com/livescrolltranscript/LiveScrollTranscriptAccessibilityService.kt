@@ -50,7 +50,6 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     // Number of Live Caption view scrolls that have happened since last search for caption text.
     private var numCaptionViewScrolls: Int = captionViewScrollsThreshold
 
-    private var processingScroll = false    // TODO: Better locking (ensure it gets released on failure)
 
     override fun onInterrupt() {}
 
@@ -60,13 +59,9 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.source?.packageName?.equals(liveCaptionPackageName) == true &&
-            ++numCaptionViewScrolls >= captionViewScrollsThreshold &&
-            !processingScroll
+            ++numCaptionViewScrolls >= captionViewScrollsThreshold
         ) {
-            processingScroll = true
-            Log.d(tag, "processingScroll = %s".format(processingScroll))
             numCaptionViewScrolls = 0
-
             event?.source?.getBoundsInScreen(liveCaptionViewLocation)   // TODO: Lock Rect during OCR.
             takeScreenshot(Display.DEFAULT_DISPLAY, applicationContext.mainExecutor, ocrProcessor)
         }
@@ -137,8 +132,6 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
             if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
             Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
         }
-        processingScroll = false
-        Log.d(tag, "processingScroll = %s".format(processingScroll))
     }
 
     private fun getLongestWordIndex(words: List<String>): Int {
