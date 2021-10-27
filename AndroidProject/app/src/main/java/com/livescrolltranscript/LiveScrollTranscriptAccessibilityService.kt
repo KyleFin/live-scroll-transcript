@@ -85,8 +85,9 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
             for (i in 1..node.childCount) {
                 node.getChild(i - 1)?.let { getNodesContainingKeyword(it) }
             }
-            // TODO: Recycle nodes when not needed (here, in else, or when removing from set?)
-            // https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo#getChild(int)
+            if (!nodesContainingKeyword.contains(node)) {
+                node.recycle()
+            }
         }
 
         /** Local functions to narrow down matches by searching for words before/after keyword. */
@@ -108,7 +109,10 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
                     offset, nodesContainingKeyword.size))
                 currIndex = keywordIndex + offset
                 if (currIndex > -1 && currIndex < wordsToFind.size) {
-                    nodesContainingKeyword.removeIf { !nodeContainsWord(it, wordsToFind[currIndex]) }
+                    val nodesToRemove = nodesContainingKeyword
+                        .filter { !nodeContainsWord(it, wordsToFind[currIndex]) }
+                    nodesToRemove.forEach(AccessibilityNodeInfo::recycle)
+                    nodesContainingKeyword.removeAll(nodesToRemove)
                 }
                 alternateAndMaybeIncrementOffset()
 
@@ -129,6 +133,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
 
         if (nodesContainingKeyword.size == 1) {
             val scrollSuccess = nodesContainingKeyword.first().performAction(ACTION_SHOW_ON_SCREEN.id)
+            nodesContainingKeyword.first().recycle()
             if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
             Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
         }
