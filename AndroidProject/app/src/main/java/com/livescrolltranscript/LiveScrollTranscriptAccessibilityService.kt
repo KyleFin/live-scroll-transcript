@@ -58,7 +58,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
      */
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.source?.packageName?.equals(liveCaptionPackageName) == true &&
+        if (event?.source?.packageName == liveCaptionPackageName &&
             ++numCaptionViewScrolls >= captionViewScrollsThreshold
         ) {
             numCaptionViewScrolls = 0
@@ -74,12 +74,12 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
      */
     private fun scrollToText(textToFind: String) {
         val wordsToFind = textToFind.split(whitespaceRegex)
-        val keywordIndex = getLongestWordIndex(wordsToFind)
+        val keywordIndex = wordsToFind.longestWordIndex()
         val nodesContainingKeyword = mutableSetOf<AccessibilityNodeInfo>()
 
         /** Recursive local function to find nodes that contain keyword. */
         fun getNodesContainingKeyword(node: AccessibilityNodeInfo) {
-            if (nodeContainsWord(node, wordsToFind[keywordIndex])) {
+            if (node.containsWord(wordsToFind[keywordIndex])) {
                 nodesContainingKeyword.add(node)
             }
             for (i in 1..node.childCount) {
@@ -110,7 +110,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
                 currIndex = keywordIndex + offset
                 if (currIndex > -1 && currIndex < wordsToFind.size) {
                     val nodesToRemove = nodesContainingKeyword
-                        .filter { !nodeContainsWord(it, wordsToFind[currIndex]) }
+                        .filter { !it.containsWord(wordsToFind[currIndex]) }
                     nodesToRemove.forEach(AccessibilityNodeInfo::recycle)
                     nodesContainingKeyword.removeAll(nodesToRemove)
                 }
@@ -139,12 +139,10 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun getLongestWordIndex(words: List<String>): Int {
-        return words.indexOf(words.maxBy(String::length))
-    }
+    private fun List<String>.longestWordIndex() = indexOf(maxBy(String::length))
 
-    private fun nodeContainsWord(node: AccessibilityNodeInfo, word: String): Boolean {
-        return node?.text?.contains(word, true) ?: false ||
-                node?.contentDescription?.contains(word, true) ?: false
+    private fun AccessibilityNodeInfo.containsWord(word: String): Boolean {
+        return this?.text?.contains(word, true) ?: false ||
+                this?.contentDescription?.contains(word, true) ?: false
     }
 }
