@@ -133,10 +133,10 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
 
         if (nodesContainingKeyword.size == 1) {
             val scrollSuccess = nodesContainingKeyword.first().performAction(ACTION_SHOW_ON_SCREEN.id)
-            nodesContainingKeyword.first().recycle()
             if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
             Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
         }
+        nodesContainingKeyword.forEach(AccessibilityNodeInfo::recycle)
     }
 
     private fun List<String>.longestWordIndex() = indexOf(maxBy(String::length))
