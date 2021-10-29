@@ -24,7 +24,6 @@ import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTI
 import android.view.Display
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import java.lang.Math.abs
 
 /**
  * An [AccessibilityService] for scrolling on-screen text to match recently-played audio.
@@ -77,72 +76,81 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
         val keywordIndex = wordsToFind.longestWordIndex()
         val nodesContainingKeyword = mutableSetOf<AccessibilityNodeInfo>()
 
-        /** Recursive local function to find nodes that contain keyword. */
-        fun getNodesContainingKeyword(node: AccessibilityNodeInfo) {
-            if (node.containsWord(wordsToFind[keywordIndex])) {
-                nodesContainingKeyword.add(node)
-            }
-            for (i in 1..node.childCount) {
-                node.getChild(i - 1)?.let { getNodesContainingKeyword(it) }
-            }
-            if (!nodesContainingKeyword.contains(node)) {
-                node.recycle()
-            }
-        }
+        Log.d(tag, "wordsToFind: %s".format(wordsToFind))
+        Log.d(tag, "keyword: %s".format(wordsToFind[keywordIndex]))
 
-        /** Local functions to narrow down matches by searching for words before/after keyword. */
-        fun narrowDownNodesContainingKeyword() {    // TODO: Unit test
-            var offset = 1
-            var currIndex: Int
-            fun offsetStillInBounds(): Boolean {
-                return keywordIndex - abs(offset) > -1 ||
-                        keywordIndex + abs(offset) < wordsToFind.size
-            }
-            fun alternateAndMaybeIncrementOffset() {
-                offset *= -1
-                if (offset > 0) offset++
-            }
+        getNodesContainingWord(
+            wordsToFind[keywordIndex], this.rootInActiveWindow, nodesContainingKeyword)
 
-            while (nodesContainingKeyword.size > 1 && offsetStillInBounds())
-            {
-                Log.d(tag, "offset: %s nodesContaininKeyword.size: %s".format(
-                    offset, nodesContainingKeyword.size))
-                currIndex = keywordIndex + offset
-                if (currIndex > -1 && currIndex < wordsToFind.size) {
-                    val nodesToRemove = nodesContainingKeyword
-                        .filter { !it.containsWord(wordsToFind[currIndex]) }
-                    nodesToRemove.forEach(AccessibilityNodeInfo::recycle)
-                    nodesContainingKeyword.removeAll(nodesToRemove)
-                }
-                alternateAndMaybeIncrementOffset()
+        Log.d(tag, "nodesContainingKeyword.size: ".format(nodesContainingKeyword.size))
+        Log.v(tag, nodesContainingKeyword.toString())
 
-                Log.d(tag, nodesContainingKeyword.size.toString())
-                Log.d(tag, nodesContainingKeyword.toString())
-            }
-        }
-
-        Log.d(tag, wordsToFind.toString())
-        Log.d(tag, wordsToFind[keywordIndex])
-
-        getNodesContainingKeyword(this.rootInActiveWindow)
-
-        Log.d(tag, nodesContainingKeyword.size.toString())
-        Log.d(tag, nodesContainingKeyword.toString())
-
-        narrowDownNodesContainingKeyword()
-
-        if (nodesContainingKeyword.size == 1) {
-            val scrollSuccess = nodesContainingKeyword.first().performAction(ACTION_SHOW_ON_SCREEN.id)
-            if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
-            Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
-        }
+        narrowDownNodesContainingKeyword(nodesContainingKeyword, keywordIndex, wordsToFind)
+        attemptScroll(nodesContainingKeyword)
         nodesContainingKeyword.forEach(AccessibilityNodeInfo::recycle)
     }
 
-    private fun List<String>.longestWordIndex() = indexOf(maxBy(String::length))
-
-    private fun AccessibilityNodeInfo.containsWord(word: String): Boolean {
-        return this?.text?.contains(word, true) ?: false ||
-                this?.contentDescription?.contains(word, true) ?: false
+    private fun attemptScroll(nodes: MutableSet<AccessibilityNodeInfo>) {
+        if (nodes.size == 1) {
+            val scrollSuccess = nodes.first().performAction(ACTION_SHOW_ON_SCREEN.id)
+            if (!scrollSuccess) Toast.makeText(this, tryRefresh, Toast.LENGTH_LONG).show()
+            Log.i(tag, "SCROLLED  %s".format(scrollSuccess))
+        }
     }
+
+    /** Recursive function to find nodes that contain [word]. Recycles nodes that don't match. */
+    private fun getNodesContainingWord(
+        word: String, root: AccessibilityNodeInfo, result: MutableSet<AccessibilityNodeInfo>
+    ) {
+        if (root.containsWord(word)) result.add(root)
+        for (i in 1..root.childCount) {
+            root.getChild(i - 1)?.let { getNodesContainingWord(word, it, result) }
+        }
+        if (!result.contains(root)) root.recycle()
+    }
+
+    // TODO: Unit tests
+    /** Narrows down matches by searching for words around keyword. Recycles nodes as removed. */
+    private fun narrowDownNodesContainingKeyword(
+        nodes: MutableSet<AccessibilityNodeInfo>, keywordIndex: Int, wordsToFind: List<String>
+    ) {
+        var offset = 1
+        while (nodes.size > 1 && offset.magnitudeInBounds(keywordIndex, wordsToFind.size)) {
+            Log.d(tag, "offset: %s nodesContaininKeyword.size: %s".format(
+                offset, nodes.size))
+            nodes.forEach { Log.d(tag, "nodeText: %s".format(it.text)) }
+            Log.v(tag, nodes.toString())
+            attemptRemovingNodesWithCurrentIndex(nodes, keywordIndex + offset, wordsToFind)
+            offset = offset.alternateAndMaybeIncrement()
+        }
+        Log.d(tag, "nodesContaininKeyword.size: %s".format(nodes.size))
+    }
+
+    /** Attempts to recycle nodes not containing [words][[index]]. */
+    private fun attemptRemovingNodesWithCurrentIndex(
+        nodes: MutableSet<AccessibilityNodeInfo>, index: Int, words: List<String>
+    ) {
+        if (index > -1 && index < words.size) recycleNodesNotContainingWord(nodes, words[index])
+    }
+
+    private fun recycleNodesNotContainingWord(
+        nodes: MutableSet<AccessibilityNodeInfo>, word: String
+    ) {
+        val nodesToRemove = nodes.filter { !it.containsWord(word) }
+        nodes.removeAll(nodesToRemove)
+        nodesToRemove.forEach(AccessibilityNodeInfo::recycle)
+    }
+
+    private fun AccessibilityNodeInfo.containsWord(word: String) =
+        text?.contains(word, true) ?: false ||
+                contentDescription?.contains(word, true) ?: false
+
+    /** Returns true if using [this] as an offset from [start] is > -1 or < [max] */
+    private fun Int.magnitudeInBounds(start: Int, max: Int) =
+        start - kotlin.math.abs(this) > -1 || start + kotlin.math.abs(this) < max
+
+    /** Returns -1 * [this] (+1 if result is positive) */
+    private fun Int.alternateAndMaybeIncrement() = if (this < 0) (this * -1) + 1 else this * -1
+
+    private fun List<String>.longestWordIndex() = indexOf(maxBy(String::length))
 }
