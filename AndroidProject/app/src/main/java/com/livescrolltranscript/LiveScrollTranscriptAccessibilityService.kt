@@ -38,10 +38,12 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val liveCaptionPackageName = "com.google.android.as"
     private val liveCaptionViewLocation = Rect()
     private val whitespaceRegex = Regex("\\s+")
-    private val tryRefresh = "Live Scroll Transcript found matching text but failed to scroll. Try reloading the page."
+    private val tryRefresh =
+        "Live Scroll Transcript found matching text but failed to scroll. Try reloading the page."
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private val ocrProcessor = OcrProcessor(liveCaptionViewLocation, ::scrollToText)
+    private val ocrProcessor =
+        OcrProcessor(liveCaptionViewLocation, ::scrollToText, this)
 
     // Number of Live Caption view scrolls that should happen before we search for new caption text.
     private val captionViewScrollsThreshold: Int = 2

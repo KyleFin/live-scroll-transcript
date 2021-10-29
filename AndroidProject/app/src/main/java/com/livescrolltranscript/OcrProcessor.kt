@@ -16,10 +16,12 @@ package com.livescrolltranscript
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 
 import com.google.android.gms.tasks.Task
@@ -35,18 +37,22 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
  * @param[callback] (String) -> Unit the function to which we pass the found text.
  */
 @RequiresApi(Build.VERSION_CODES.R)
-class OcrProcessor(textLocation: Rect, callback: (String) -> Unit) :
+class OcrProcessor(textLocation: Rect, callback: (String) -> Unit,  toastContext: Context) :
     TakeScreenshotCallback {
     private val tag = "livescrolltranscript.ScreenshotCallback"
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val textLocation = textLocation
     private val callback = callback
+    private val toastContext = toastContext
+    private val tooSoonError =
+        "Live Scroll Transcript attempted to read Live Captions from screen too soon."
 
     override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
         getTextAndInvokeCallback(screenshot)
     }
 
     override fun onFailure(errorCode: Int) {
+        if (errorCode == 3) Toast.makeText(toastContext, tooSoonError, Toast.LENGTH_LONG).show()
         Log.e(tag, "Screenshot failed with errorCode: %s".format(errorCode))
     }
 
