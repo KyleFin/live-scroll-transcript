@@ -15,13 +15,11 @@
 package com.livescrolltranscript
 
 import android.accessibilityservice.AccessibilityService
-import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN
-import android.view.Display
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 
@@ -36,17 +34,14 @@ import androidx.annotation.RequiresApi
 class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val tag = "LiveScrollTranscriptAccessibilityService"
     private val liveCaptionPackageName = "com.google.android.as"
-    private val liveCaptionViewLocation = Rect()
     private val whitespaceRegex = Regex("\\s+")
     private val tryRefresh =
         "Live Scroll Transcript found matching text but failed to scroll. Try reloading the page."
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private val ocrProcessor =
-        OcrProcessor(liveCaptionViewLocation, ::scrollToText, this)
-
     // Number of Live Caption view scrolls that should happen before we search for new caption text.
     private val captionViewScrollsThreshold: Int = 2
+
+    private val numWordsToLookAt: Int = 10
 
     // Number of Live Caption view scrolls that have happened since last search for caption text.
     private var numCaptionViewScrolls: Int = captionViewScrollsThreshold
@@ -63,8 +58,7 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
             ++numCaptionViewScrolls >= captionViewScrollsThreshold
         ) {
             numCaptionViewScrolls = 0
-            event?.source?.getBoundsInScreen(liveCaptionViewLocation)   // TODO: Lock Rect during OCR.
-            takeScreenshot(Display.DEFAULT_DISPLAY, applicationContext.mainExecutor, ocrProcessor)
+            scrollToText(event.source?.getChild(0)?.text.toString())
         }
     }
 
@@ -75,19 +69,21 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
      */
     private fun scrollToText(textToFind: String) {
         val wordsToFind = textToFind.split(whitespaceRegex)
-        val keywordIndex = wordsToFind.longestWordIndex()
+        val wordsToFindTruncated = wordsToFind.takeLast(numWordsToLookAt)
+        val keywordIndex = wordsToFindTruncated.longestWordIndex()
         val nodesContainingKeyword = mutableSetOf<AccessibilityNodeInfo>()
+        Log.d(tag, "textToFind: $textToFind")
 
-        Log.d(tag, "wordsToFind: %s".format(wordsToFind))
-        Log.d(tag, "keyword: %s".format(wordsToFind[keywordIndex]))
+        Log.d(tag, "wordsToFind: %s".format(wordsToFindTruncated))
+        Log.d(tag, "keyword: %s".format(wordsToFindTruncated[keywordIndex]))
 
         getNodesContainingWord(
-            wordsToFind[keywordIndex], this.rootInActiveWindow, nodesContainingKeyword)
+            wordsToFindTruncated[keywordIndex], this.rootInActiveWindow, nodesContainingKeyword)
 
         Log.d(tag, "nodesContainingKeyword.size: ".format(nodesContainingKeyword.size))
         Log.v(tag, nodesContainingKeyword.toString())
 
-        narrowDownNodesContainingKeyword(nodesContainingKeyword, keywordIndex, wordsToFind)
+        narrowDownNodesContainingKeyword(nodesContainingKeyword, keywordIndex, wordsToFindTruncated)
         attemptScroll(nodesContainingKeyword)
         nodesContainingKeyword.forEach(AccessibilityNodeInfo::recycle)
     }
