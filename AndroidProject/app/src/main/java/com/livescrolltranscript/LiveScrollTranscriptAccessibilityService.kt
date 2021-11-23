@@ -19,6 +19,7 @@ import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SELECT
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -26,8 +27,8 @@ import androidx.annotation.RequiresApi
 /**
  * An [AccessibilityService] for scrolling on-screen text to match recently-played audio.
  *
- * When the Live Captions view scrolls, this service receives an [AccessibilityEvent]. It then takes
- * a screenshot and uses OCR to read the current Live Caption text. The current accessibility tree
+ * When the Live Captions view scrolls, this service receives an [AccessibilityEvent]. It then grabs
+ * the Live Caption window node to read the current Live Caption text. The current accessibility tree
  * is searched for the current caption text. If a unique [AccessibilityNodeInfo] is found to match
  * the caption text, it is requested to show itself on screen.
  */
