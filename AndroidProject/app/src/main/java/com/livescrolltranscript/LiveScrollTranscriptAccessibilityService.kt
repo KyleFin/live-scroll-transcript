@@ -15,37 +15,38 @@
 package com.livescrolltranscript
 
 import android.accessibilityservice.AccessibilityService
-import android.graphics.Rect
-import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN
-import android.view.Display
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 
 /**
  * An [AccessibilityService] for scrolling on-screen text to match recently-played audio.
  *
- * When the Live Captions view scrolls, this service receives an [AccessibilityEvent]. It then takes
- * a screenshot and uses OCR to read the current Live Caption text. The current accessibility tree
- * is searched for the current caption text. If a unique [AccessibilityNodeInfo] is found to match
- * the caption text, it is requested to show itself on screen.
+ * When the Live Captions view scrolls, this service receives an [AccessibilityEvent] which contains
+ * the current Live Caption text. The current accessibility tree is searched for the current caption
+ * text. If a unique [AccessibilityNodeInfo] is found to match the caption text, it is requested to
+ * show itself on screen.
  */
 class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     private val tag = "LiveScrollTranscriptAccessibilityService"
     private val liveCaptionPackageName = "com.google.android.as"
-    private val liveCaptionViewLocation = Rect()
     private val whitespaceRegex = Regex("\\s+")
     private val tryRefresh =
         "Live Scroll Transcript found matching text but failed to scroll. Try reloading the page."
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private val ocrProcessor =
-        OcrProcessor(liveCaptionViewLocation, ::scrollToText, this)
+    // TODO: Optimize (make customizable?) search size and scrolling frequency. https://github.com/KyleFin/live-scroll-transcript/issues/10
+    // Number of characters to read from the end of the most recent Live Caption text.
+    // A larger value provides a better "keyword" we're more likely to match.
+    // A smaller value considers only the most recently captioned words (This "recency" only matters
+    // if the caption text we're considering spans multiple AccessibilityNodeInfos / paragraphs).
+    private val numCaptionCharsToLookAt: Int = 100
 
     // Number of Live Caption view scrolls that should happen before we search for new caption text.
+    // A larger value may help performance by searching less frequently (especially in large books).
+    // A smaller value scrolls to the most recently captioned text as soon as possible (This only
+    // matters if the latest caption is a new AccessibilityNodeInfo / paragraph).
     private val captionViewScrollsThreshold: Int = 2
 
     // Number of Live Caption view scrolls that have happened since last search for caption text.
@@ -57,14 +58,13 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
     /**
      * Responds to view scroll events from Live Caption by searching for and showing matching text.
      */
-    @RequiresApi(Build.VERSION_CODES.R)
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.source?.packageName == liveCaptionPackageName &&
             ++numCaptionViewScrolls >= captionViewScrollsThreshold
         ) {
             numCaptionViewScrolls = 0
-            event?.source?.getBoundsInScreen(liveCaptionViewLocation)   // TODO: Lock Rect during OCR.
-            takeScreenshot(Display.DEFAULT_DISPLAY, applicationContext.mainExecutor, ocrProcessor)
+            scrollToText(
+                event.source?.getChild(0)?.text?.takeLast(numCaptionCharsToLookAt).toString())
         }
     }
 

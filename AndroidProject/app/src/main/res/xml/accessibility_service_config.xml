@@ -19,5 +19,4 @@ limitations under the License.
     android:accessibilityEventTypes="typeViewScrolled"
     android:accessibilityFeedbackType="feedbackVisual"
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows"
-    android:canRetrieveWindowContent="true"
-    android:canTakeScreenshot="true" />
+    android:canRetrieveWindowContent="true" />
