@@ -102,8 +102,9 @@ class LiveScrollTranscriptAccessibilityService : AccessibilityService() {
 
     /** Recursive function to find nodes that contain [word]. Recycles nodes that don't match. */
     private fun getNodesContainingWord(
-        word: String, root: AccessibilityNodeInfo, result: MutableSet<AccessibilityNodeInfo>
+        word: String, root: AccessibilityNodeInfo?, result: MutableSet<AccessibilityNodeInfo>
     ) {
+        if (root == null) return
         if (root.containsWord(word)) result.add(root)
         for (i in 1..root.childCount) {
             root.getChild(i - 1)?.let { getNodesContainingWord(word, it, result) }
